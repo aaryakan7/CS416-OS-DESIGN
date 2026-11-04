@@ -1,0 +1,11 @@
+.DS_Store
+*.o
+*.a
+*.dSYM/
+__pycache__/
+project2/build/
+project2/benchmarks/parallel_cal
+project2/benchmarks/vector_multiply
+project2/benchmarks/external_cal
+project2/benchmarks/test
+project2/benchmarks/record/

@@ -1,0 +1,8 @@
+Build the library from the parent folder with make SCHED=PSJF (or MLFQ/CFS),
+then run make here. Run ./parallel_cal 4, ./vector_multiply 4, and
+./genRecord.sh followed by ./external_cal 4.
+
+Every benchmark checks its threaded sum against a serial calculation.
+Use make USE_WORKERS=0 here to compare native pthreads.
+The CPU array benchmark defaults to 1000 rows and 10000 columns (about 40 MB).
+Override R_SIZE, C_SIZE, or VECTOR_SIZE through CPPFLAGS for larger workloads.

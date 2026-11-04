@@ -1,0 +1,51 @@
+name: Linux tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scheduler: [PSJF, MLFQ, CFS]
+        compiler: [gcc, clang]
+    defaults:
+      run:
+        working-directory: project2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: make CC=${{ matrix.compiler }} SCHED=${{ matrix.scheduler }} test benchmarks
+      - name: Check benchmarks and invalid inputs
+        run: |
+          cd benchmarks
+          ./genRecord.sh
+          ./test
+          for threads in 1 4 8 100; do
+            timeout 30 ./parallel_cal "$threads"
+            timeout 30 ./vector_multiply "$threads"
+            timeout 30 ./external_cal "$threads"
+          done
+          for program in parallel_cal vector_multiply external_cal; do
+            for argument in 0 -1 abc 10001; do
+              if ./$program "$argument"; then exit 1; fi
+            done
+          done
+      - name: Native pthread benchmarks
+        run: |
+          make -C benchmarks CC=${{ matrix.compiler }} USE_WORKERS=0
+          cd benchmarks
+          ./test
+          ./parallel_cal 4
+          ./vector_multiply 4
+          ./external_cal 4
+      - name: Short quantum regression tests
+        run: |
+          make clean
+          make CC=${{ matrix.compiler }} SCHED=${{ matrix.scheduler }} CPPFLAGS="-D_GNU_SOURCE -D${{ matrix.scheduler }} -DQUANTUM=1 -DS_PROMOTION_PERIOD=200" test
+      - name: Undefined behavior checks
+        run: |
+          make clean
+          make CC=${{ matrix.compiler }} SCHED=${{ matrix.scheduler }} CFLAGS="-O1 -g -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all" test
