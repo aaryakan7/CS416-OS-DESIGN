@@ -119,6 +119,18 @@ static void start_worker(void) {
     worker_exit(result);
 }
 
+static int init_worker_context(tcb *thread, const sigset_t *mask) {
+    if (getcontext(&thread->context) == -1) return errno;
+    thread->context.uc_stack.ss_sp = thread->stack;
+    thread->context.uc_stack.ss_size = WORKER_STACK_SIZE;
+    thread->context.uc_stack.ss_flags = 0;
+    thread->context.uc_link = &scheduler_context;
+    thread->context.uc_sigmask = *mask;
+    sigdelset(&thread->context.uc_sigmask, SIGPROF);
+    makecontext(&thread->context, start_worker, 0);
+    return 0;
+}
+
 /* Called with SIGPROF blocked, before any timer is started. */
 static int first_time_setup(void) {
     if (getcontext(&scheduler_context) == -1) return errno;
@@ -195,22 +207,15 @@ int worker_create(worker_t *thread, pthread_attr_t *attr,
     }
     new_tcb->stack = malloc(WORKER_STACK_SIZE);
     if (!new_tcb->stack) error = ENOMEM;
-    else if (getcontext(&new_tcb->context) == -1) error = errno;
+    else error = init_worker_context(new_tcb, &oldmask);
     if (error) {
         free(new_tcb->stack);
         free(new_tcb);
         restore_mask(&oldmask);
         return error;
     }
-    new_tcb->context.uc_stack.ss_sp = new_tcb->stack;
-    new_tcb->context.uc_stack.ss_size = WORKER_STACK_SIZE;
-    new_tcb->context.uc_stack.ss_flags = 0;
-    new_tcb->context.uc_link = &scheduler_context;
-    new_tcb->context.uc_sigmask = oldmask;
-    sigdelset(&new_tcb->context.uc_sigmask, SIGPROF);
     new_tcb->function = function;
     new_tcb->arg = arg;
-    makecontext(&new_tcb->context, start_worker, 0);
     new_tcb->tid = next_tid++;
     new_tcb->start_time = time_us(CLOCK_MONOTONIC);
     new_tcb->is_first_run = 1;
