@@ -12,9 +12,6 @@
 #ifndef RECORD_NUM
 #define RECORD_NUM 10
 #endif
-#ifndef RECORD_SIZE
-#define RECORD_SIZE 4194304
-#endif
 
 /* Global variables */
 pthread_mutex_t   mutex;
@@ -29,13 +26,13 @@ uint64_t sum = 0;
 int itr = RECORD_VALUES / 4;
 
 void *external_calculate(void* arg) {
-	
+
 	int i = 0, j = 0, k = 0;
 	int n = *((int*) arg);
 
 	for (k = n; k < RECORD_NUM; k += thread_num) {
 
-	char path[64];
+		char path[64];
 
 		snprintf(path, sizeof(path), "./record/%d", k);
 
@@ -63,7 +60,7 @@ void *external_calculate(void* arg) {
 
 
 void verify(void) {
-	
+
 	int i = 0, j = 0, k = 0;
 	char path[64];
 
@@ -92,13 +89,8 @@ void verify(void) {
 }
 
 
-void sig_handler(int signum) {
-	printf("%d\n", signum);
-}
-
-
 int main(int argc, char **argv) {
-	
+
 	int i = 0;
 
 	thread_num = parse_thread_count(argc, argv, DEFAULT_THREAD_NUM);
@@ -117,10 +109,10 @@ int main(int argc, char **argv) {
 
 	struct timespec start, end;
         clock_gettime(CLOCK_MONOTONIC, &start);
- 
+
 	for (i = 0; i < thread_num; ++i)
 		check_thread(pthread_create(&thread[i], NULL, &external_calculate, &counter[i]));
-	
+
 
 
 	for (i = 0; i < thread_num; ++i)
@@ -142,7 +134,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Sum mismatch: threaded=%" PRIu64 " serial=%" PRIu64 "\n", threaded_sum, sum);
 		return EXIT_FAILURE;
 	}
-	
+
 	free(mem);
 	free(thread);
 	free(counter);

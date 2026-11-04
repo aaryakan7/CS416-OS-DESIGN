@@ -22,11 +22,11 @@ uint64_t sum = 0;
 void *vector_multiply(void* arg) {
 	int i = 0;
 	int n = *((int*) arg);
-	
+
 	for (i = n; i < VECTOR_SIZE; i += thread_num) {
 		check_thread(pthread_mutex_lock(&mutex));
 		sum += (uint64_t)r[i] * (unsigned)s[i];
-		check_thread(pthread_mutex_unlock(&mutex));	
+		check_thread(pthread_mutex_unlock(&mutex));
 	}
 
 	return NULL;
@@ -36,13 +36,13 @@ void verify(void) {
 	int i = 0;
 	sum = 0;
 	for (i = 0; i < VECTOR_SIZE; i += 1) {
-		sum += (uint64_t)r[i] * (unsigned)s[i];	
+		sum += (uint64_t)r[i] * (unsigned)s[i];
 	}
 	//printf("verified sum is: %d\n", sum);
 }
 
 int main(int argc, char **argv) {
-	
+
 	int i = 0;
 
 	thread_num = parse_thread_count(argc, argv, DEFAULT_THREAD_NUM);

@@ -308,7 +308,7 @@ int worker_mutex_lock(worker_mutex_t *mutex) {
         restore_mask(&oldmask);
         return EDEADLK;
     }
-    while (atomic_flag_test_and_set(&mutex->flag)) {
+    if (atomic_flag_test_and_set(&mutex->flag)) {
         if (would_deadlock(mutex->owner)) {
             restore_mask(&oldmask);
             return EDEADLK;
@@ -317,8 +317,11 @@ int worker_mutex_lock(worker_mutex_t *mutex) {
         self->waiting_on = mutex->owner;
         enqueue(&mutex->blocked_queue, self);
         switch_to_scheduler();
+        /* Unlock hands ownership directly to the first waiter. */
+        assert(mutex->owner == self);
+    } else {
+        mutex->owner = self;
     }
-    mutex->owner = self;
     restore_mask(&oldmask);
     return 0;
 }
@@ -332,14 +335,17 @@ int worker_mutex_unlock(worker_mutex_t *mutex) {
         restore_mask(&oldmask);
         return EPERM;
     }
-    mutex->owner = NULL;
-    atomic_flag_clear(&mutex->flag);
-    /* Waiters no longer depend on the old owner, which may now exit. */
-    for (tcb *waiting = mutex->blocked_queue.head; waiting; waiting = waiting->next) {
-        waiting->waiting_on = NULL;
-    }
     tcb *waiting = dequeue(&mutex->blocked_queue);
-    if (waiting) ready_thread(waiting);
+    mutex->owner = waiting;
+    if (waiting) {
+        waiting->waiting_on = NULL;
+        for (tcb *other = mutex->blocked_queue.head; other; other = other->next) {
+            other->waiting_on = waiting;
+        }
+        ready_thread(waiting);
+    } else {
+        atomic_flag_clear(&mutex->flag);
+    }
     restore_mask(&oldmask);
     return 0;
 }
@@ -410,21 +416,25 @@ static tcb *sched_cfs(void) {
 }
 #endif
 
+static void charge_runtime(tcb *thread, long elapsed) {
+    thread->vruntime += elapsed;
+    thread->elapsed_quantums = thread->vruntime / (QUANTUM * 1000L);
+#ifdef MLFQ
+    thread->level_runtime += elapsed;
+    long allotment = QUANTUM * 1000L * (1L << thread->mlfq_level);
+    while (thread->level_runtime >= allotment) {
+        thread->level_runtime -= allotment;
+        if (thread->mlfq_level < NUM_MLFQ_LEVELS - 1) thread->mlfq_level++;
+        allotment = QUANTUM * 1000L * (1L << thread->mlfq_level);
+    }
+#endif
+}
+
 static void schedule(void) {
     stop_timer();
     tcb *previous = current_thread;
     long elapsed = time_us(CLOCK_PROCESS_CPUTIME_ID) - last_scheduled_cpu;
-    previous->vruntime += elapsed;
-    previous->elapsed_quantums = previous->vruntime / (QUANTUM * 1000L);
-#ifdef MLFQ
-    previous->level_runtime += elapsed;
-    long allotment = QUANTUM * 1000L * (1L << previous->mlfq_level);
-    while (previous->level_runtime >= allotment) {
-        previous->level_runtime -= allotment;
-        if (previous->mlfq_level < NUM_MLFQ_LEVELS - 1) previous->mlfq_level++;
-        allotment = QUANTUM * 1000L * (1L << previous->mlfq_level);
-    }
-#endif
+    charge_runtime(previous, elapsed);
     if (previous->status == RUNNING || previous->status == READY) ready_thread(previous);
     if (previous->status == TERMINATED && previous->tid != 0) {
         total_threads_completed++;
@@ -445,7 +455,8 @@ static void schedule(void) {
         for (tcb *thread = all_threads_list_head; thread; thread = thread->next_global) {
             if (thread->status != TERMINATED) {
                 const char message[] = "worker: deadlock, no runnable threads\n";
-                write(STDERR_FILENO, message, sizeof(message) - 1);
+                ssize_t written = write(STDERR_FILENO, message, sizeof(message) - 1);
+                (void)written; /* Best-effort diagnostic before terminating. */
                 _Exit(EXIT_FAILURE);
             }
         }
@@ -516,7 +527,7 @@ static int heap_init(cfs_heap* h, int capacity) {
 	h->threads = (tcb**) malloc(capacity * sizeof(tcb*));
 	if (h->threads == NULL) {
 		// This is a catastrophic failure
-		return ENOMEM; 
+		return ENOMEM;
 	}
 	h->size = 0;
 	h->capacity = capacity;
@@ -528,7 +539,7 @@ static int heap_grow(cfs_heap* h) {
 	int new_capacity = h->capacity * 2;
 	tcb** new_threads = (tcb**) realloc(h->threads, new_capacity * sizeof(tcb*));
 	if (new_threads == NULL) {
-		return ENOMEM; 
+		return ENOMEM;
 	}
 	h->threads = new_threads;
 	h->capacity = new_capacity;
@@ -537,7 +548,7 @@ static int heap_grow(cfs_heap* h) {
 
 static void heapify_up(cfs_heap* h, int index) {
 	if (index == 0) return;
-	
+
 	int p = heap_parent(index);
 	// Min-heap property: parent's vruntime <= child's vruntime
 	if (h->threads[p]->vruntime > h->threads[index]->vruntime) {
@@ -554,7 +565,7 @@ static void heap_insert(cfs_heap* h, tcb* thread) {
 	h->threads[h->size] = thread;
 	int index = h->size;
 	h->size++;
-	
+
 	// Bubble up to maintain heap property
 	heapify_up(h, index);
 }
@@ -563,7 +574,7 @@ static void heapify_down(cfs_heap* h, int index) {
 	int left = heap_left(index);
 	int right = heap_right(index);
 	int smallest = index;
-	
+
 	// Find the smallest among root, left child, and right child
 	if (left < h->size && h->threads[left]->vruntime < h->threads[smallest]->vruntime) {
 		smallest = left;
@@ -571,7 +582,7 @@ static void heapify_down(cfs_heap* h, int index) {
 	if (right < h->size && h->threads[right]->vruntime < h->threads[smallest]->vruntime) {
 		smallest = right;
 	}
-	
+
 	// If smallest is not the root, swap and recursively heapify down
 	if (smallest != index) {
 		heap_swap(&h->threads[index], &h->threads[smallest]);
@@ -583,19 +594,19 @@ static tcb* heap_extract_min(cfs_heap* h) {
 	if (h->size == 0) {
 		return NULL;
 	}
-	
+
 	// The min element is always at the root
 	tcb* min_thread = h->threads[0];
-	
+
 	// Move the last element to the root
 	h->threads[0] = h->threads[h->size - 1];
 	h->size--;
-	
+
 	// Bubble down to maintain heap property
 	if (h->size > 0) {
 		heapify_down(h, 0);
 	}
-	
+
 	return min_thread;
 }
 

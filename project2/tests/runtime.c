@@ -10,6 +10,9 @@ static volatile sig_atomic_t first_started;
 static volatile sig_atomic_t second_started;
 static long counter;
 static worker_t self_tid;
+static worker_t cycle_threads[2];
+static volatile sig_atomic_t cycle_ready;
+static volatile sig_atomic_t waiter_started;
 
 static long cpu_ms(void) {
     struct timespec now;
@@ -90,6 +93,29 @@ static void *create_child(void *arg) {
     return result;
 }
 
+static void *cycle_first(void *arg) {
+    (void)arg;
+    while (!cycle_ready) worker_yield();
+    assert(worker_join(cycle_threads[1], NULL) == 0);
+    return NULL;
+}
+
+static void *cycle_second(void *arg) {
+    (void)arg;
+    while (!cycle_ready) worker_yield();
+    /* First waits on second, so joining first would complete a cycle. */
+    assert(worker_join(cycle_threads[0], NULL) == EDEADLK);
+    return NULL;
+}
+
+static void *handoff_waiter(void *arg) {
+    (void)arg;
+    waiter_started = 1;
+    assert(worker_mutex_lock(&mutex) == 0);
+    assert(worker_mutex_unlock(&mutex) == 0);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     worker_t threads[100];
@@ -141,6 +167,21 @@ int main(int argc, char **argv) {
         void *result = NULL;
         assert(worker_join(threads[0], &result) == 0);
         assert(result == &values[0]);
+    } else if (!strcmp(argv[1], "cycle")) {
+        assert(worker_create(&cycle_threads[0], NULL, cycle_first, NULL) == 0);
+        assert(worker_create(&cycle_threads[1], NULL, cycle_second, NULL) == 0);
+        cycle_ready = 1;
+        assert(worker_join(cycle_threads[0], NULL) == 0);
+    } else if (!strcmp(argv[1], "handoff")) {
+        assert(worker_mutex_init(&mutex, NULL) == 0);
+        assert(worker_mutex_lock(&mutex) == 0);
+        assert(worker_create(&threads[0], NULL, handoff_waiter, NULL) == 0);
+        while (!waiter_started) worker_yield();
+        assert(worker_mutex_unlock(&mutex) == 0);
+        /* The awakened waiter already owns the mutex before being scheduled. */
+        assert(worker_mutex_destroy(&mutex) == EBUSY);
+        assert(worker_join(threads[0], NULL) == 0);
+        assert(worker_mutex_destroy(&mutex) == 0);
     } else {
         return 2;
     }

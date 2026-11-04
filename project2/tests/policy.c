@@ -3,6 +3,14 @@
 
 int main(void) {
     tcb threads[100] = {0};
+    tcb accounting = {0};
+    for (int i = 0; i < 20; i++) charge_runtime(&accounting, QUANTUM * 100L);
+    assert(accounting.vruntime == QUANTUM * 2000L);
+    assert(accounting.elapsed_quantums == 2);
+#ifdef MLFQ
+    assert(accounting.mlfq_level == 1);
+    assert(accounting.level_runtime == QUANTUM * 1000L);
+#endif
 #ifdef CFS
     assert(heap_init(&cfs_run_queue, HEAP_DEFAULT_CAPACITY) == 0);
     assert(heap_grow(&cfs_run_queue) == 0);

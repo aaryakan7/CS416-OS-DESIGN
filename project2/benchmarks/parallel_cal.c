@@ -23,7 +23,7 @@ uint64_t sum = 0;
 
 /* A CPU-bound task to do parallel array addition */
 void *parallel_calculate(void* arg) {
-	
+
 	int i = 0, j = 0;
 	int n = *((int*) arg);
 
@@ -44,7 +44,7 @@ void *parallel_calculate(void* arg) {
 
 /* verification function */
 void verify(void) {
-	
+
 	int i = 0, j = 0;
 	sum = 0;
 	memset(&pSum, 0, sizeof(pSum));
@@ -61,7 +61,7 @@ void verify(void) {
 }
 
 int main(int argc, char **argv) {
-	
+
 	int i = 0, j = 0;
 
 	thread_num = parse_thread_count(argc, argv, DEFAULT_THREAD_NUM);
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 	// Free memory on Heap
 	free(thread);
 	free(counter);
-	
+
 	for (i = 0; i < R_SIZE; ++i)
 		free(a[i]);
 
