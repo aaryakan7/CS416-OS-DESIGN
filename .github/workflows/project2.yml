@@ -1,5 +1,14 @@
-name: Linux tests
-on: [push, pull_request, workflow_dispatch]
+name: Project 2 Linux tests
+on:
+  push:
+    paths:
+      - 'project2/**'
+      - '.github/workflows/project2.yml'
+  pull_request:
+    paths:
+      - 'project2/**'
+      - '.github/workflows/project2.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

@@ -9,3 +9,6 @@ project2/benchmarks/vector_multiply
 project2/benchmarks/external_cal
 project2/benchmarks/test
 project2/benchmarks/record/
+project3/build/
+project3/benchmark/test
+project3/benchmark/mtest
