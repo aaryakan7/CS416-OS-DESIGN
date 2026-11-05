@@ -8,4 +8,6 @@ Operating systems projects from CS416 at Rutgers University.
 
 - [Project 3 — Virtual memory](project3/). A simulated 32-bit memory manager with two-level page tables, a direct-mapped TLB, and synchronized data access.
 
+- [Project 4 — RUFS](project4/). A FUSE filesystem with persistent directories, small files, and disk-image storage.
+
 Originally developed by Aarya Dalal and Aarya Kansara. This repository includes subsequent bug fixes and regression tests.

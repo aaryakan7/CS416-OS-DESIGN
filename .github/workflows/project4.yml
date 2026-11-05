@@ -1,0 +1,38 @@
+name: Project 4 tests
+on:
+  push:
+    paths:
+      - 'project4/**'
+      - '.github/workflows/project4.yml'
+  pull_request:
+    paths:
+      - 'project4/**'
+      - '.github/workflows/project4.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  filesystem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    defaults:
+      run:
+        working-directory: project4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FUSE 2
+        run: sudo apt-get update && sudo apt-get install -y libfuse-dev fuse pkg-config
+      - name: Build and callback tests
+        run: make CC=${{ matrix.compiler }} all test
+      - name: Memory and undefined behavior checks
+        run: make CC=${{ matrix.compiler }} CFLAGS="-O1 -g -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all" test
+      - name: Mounted filesystem and remount test
+        if: matrix.compiler == 'gcc'
+        run: |
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          sudo chmod a+rw /dev/fuse
+          python3 tests/mount.py
