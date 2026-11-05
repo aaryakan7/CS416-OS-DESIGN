@@ -20,6 +20,8 @@ test:
 	./build/test-4k
 	$(CC) $(CONFIG) -pthread -DMEMSIZE=33554432 -DPGSIZE=8192 -DTLB_ENTRIES=1 tests/test_vm.c my_vm.c -o build/test-8k
 	./build/test-8k
+	$(CC) $(CONFIG) -pthread -DMEMSIZE=33554432 -DPGSIZE=16384 -DTLB_ENTRIES=3 tests/test_vm.c my_vm.c -o build/test-16k
+	./build/test-16k
 	$(CC) $(CONFIG) -pthread -DMEMSIZE=33554432 -DPGSIZE=65536 -DTLB_ENTRIES=7 tests/test_vm.c my_vm.c -o build/test-64k
 	./build/test-64k
 	$(CC) $(CONFIG) -pthread -DMEMSIZE=8192 -DPGSIZE=4096 tests/test_exhaustion.c my_vm.c -o build/test-exhaustion

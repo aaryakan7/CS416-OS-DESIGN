@@ -5,6 +5,7 @@
 #include <string.h>
 
 extern void *physical_mem;
+extern double tlb_lookups, tlb_misses;
 extern unsigned char *phys_bitmap, *virt_bitmap;
 extern unsigned long num_phys_pages, num_virt_pages;
 
@@ -80,10 +81,41 @@ static void crossing_and_tlb(void) {
     assert_empty();
 }
 
+static void tlb_statistics(void) {
+    double lookups = tlb_lookups, misses = tlb_misses;
+    unsigned pages = TLB_ENTRIES + 1;
+    void *va = n_malloc(pages * PGSIZE);
+    assert(va);
+    assert(tlb_lookups == lookups + pages);
+    assert(tlb_misses == misses + pages);
+    /* Allocation of the last page evicts the first page's direct-mapped slot. */
+    void *collision = U2VA(VA2U(va) + TLB_ENTRIES * PGSIZE);
+    assert(translate(physical_mem, va));
+    assert(tlb_lookups == lookups + pages + 1);
+    assert(tlb_misses == misses + pages + 1);
+    pte_t frame = *translate(physical_mem, va);
+    assert(tlb_lookups == lookups + pages + 2);
+    assert(tlb_misses == misses + pages + 1);
+    assert(translate(physical_mem, collision));
+    assert(translate(physical_mem, va));
+    assert(tlb_lookups == lookups + pages + 4);
+    assert(tlb_misses == misses + pages + 3);
+    /* Reinstalling the same mapping or refreshing its cache is not compulsory. */
+    assert(map_page(physical_mem, va, U2VA(frame * PGSIZE)) == 0);
+    assert(TLB_add(va, U2VA(frame * PGSIZE)) == 0);
+    assert(tlb_lookups == lookups + pages + 4);
+    assert(tlb_misses == misses + pages + 3);
+    n_free(va, (int)(pages * PGSIZE));
+    assert_empty();
+}
+
 static void allocation_failure(void) {
+    double lookups = tlb_lookups, misses = tlb_misses;
     assert(!n_malloc(0));
     assert(!n_malloc(UINT_MAX));
     assert(!n_malloc((unsigned)MEMSIZE));
+    assert(tlb_lookups == lookups);
+    assert(tlb_misses == misses);
     assert_empty();
     void *va = n_malloc(1);
     assert(va);
@@ -158,6 +190,7 @@ int main(void) {
     assert_empty();
     boundaries();
     crossing_and_tlb();
+    tlb_statistics();
     allocation_failure();
     manual_mapping();
     matrices();

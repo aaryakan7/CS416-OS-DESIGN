@@ -3,11 +3,13 @@
 #include <errno.h>
 extern unsigned char *phys_bitmap, *virt_bitmap;
 extern void *physical_mem;
+extern double tlb_lookups, tlb_misses;
 int main(void) {
     /* Only two frames: a directory and data frame leave no space for a table. */
     for (int attempt = 0; attempt < 3; attempt++) {
         assert(!n_malloc(1));
         assert(errno == ENOMEM);
+        assert(tlb_lookups == 0 && tlb_misses == 0);
         assert(phys_bitmap[0] == 1);
         assert(virt_bitmap[0] == 1);
         assert(((pde_t *)physical_mem)[0] == 0);

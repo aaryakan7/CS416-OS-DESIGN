@@ -16,9 +16,11 @@ make benchmarks
 
 For a 32-bit Linux build, install the multilib development libraries and add `-m32` to `CFLAGS`. GitHub Actions checks GCC and Clang on Linux at both 32 and 64 bits, plus memory and thread sanitizers.
 
-The default simulated memory sizes are 1 GB physical and 4 GB virtual, with 4 KB pages and 512 TLB entries. Configuration macros can be supplied through `CPPFLAGS`, for example `make CPPFLAGS='-DPGSIZE=8192 -DTLB_ENTRIES=7'`. The library and benchmarks must use the same configuration. `make test` independently tests 4 KB, 8 KB, and 64 KB pages using smaller physical memory buffers and different TLB capacities.
+The default simulated memory sizes are 1 GB physical and 4 GB virtual, with 4 KB pages and 512 TLB entries. Configuration macros can be supplied through `CPPFLAGS`, for example `make CPPFLAGS='-DPGSIZE=8192 -DTLB_ENTRIES=7'`. The library and benchmarks must use the same configuration. `make test` independently tests 4 KB, 8 KB, 16 KB, and 64 KB pages using smaller physical memory buffers and different TLB capacities.
 
 ## Behavior
+
+TLB statistics count one lookup and one compulsory miss for each newly installed page mapping, followed by hits or misses for subsequent lookups. Failed allocations leave both counters unchanged. Reinstalling an existing mapping or refreshing its cache entry does not count as a compulsory miss. The miss rate is total misses divided by total lookups.
 
 Page tables live inside simulated physical memory and are created on demand. Empty page tables are reclaimed when their last mapping is removed. Each allocation receives whole pages, and failed allocations release all pages and page tables acquired during that attempt.
 

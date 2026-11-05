@@ -187,6 +187,9 @@ static int map_locked(vaddr32_t va, pte_t frame) {
     table_users[index]++;
     set_bit(virt_bitmap, vpn);
     memset((char *)physical_mem + (size_t)frame * PGSIZE, 0, PGSIZE);
+    /* Installing a new mapping is one compulsory translation miss. */
+    tlb_lookups++;
+    tlb_misses++;
     tlb_add_locked(va, frame);
     return 0;
 }
@@ -252,6 +255,8 @@ void *n_malloc(unsigned int num_bytes) {
         pthread_mutex_unlock(&mutex);
         return NULL;
     }
+    double previous_lookups = tlb_lookups;
+    double previous_misses = tlb_misses;
     size_t mapped = 0;
     for (; mapped < pages; mapped++) {
         long frame = free_frame_locked();
@@ -259,6 +264,8 @@ void *n_malloc(unsigned int num_bytes) {
     }
     if (mapped != pages) {
         for (size_t i = 0; i < mapped; i++) unmap_locked(VA2U(base) + (vaddr32_t)(i * PGSIZE));
+        tlb_lookups = previous_lookups;
+        tlb_misses = previous_misses;
         base = NULL;
         errno = ENOMEM;
     }
